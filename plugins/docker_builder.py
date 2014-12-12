@@ -1,83 +1,141 @@
 """usage: !docker <command> [<args>]
 
 Available commands:
-   build <repository url>          checkout and build an image from a git repository
+   build <github repository>       checkout and build an image from github
+   build_url <repository url>      checkout and build an image from a git repository
    help                            show this help
    run <image id>                  create and run a container
 """
 
 # structure borrowed from atlassian-jira.py
 
-import re
 import envoy
+import logging
+import os
+import re
+import shutil
 import tempfile
 
 def help():
     return __doc__
 
-def build(conn, args):
+def clone_repository(repository_url, build_dir):
+    r = envoy.run('git clone {} {}'.format(repository_url, build_dir))
+    if r.status_code is not 0:
+        raise RuntimeError('git returned a non-zero status code ({}):\n{}\n{}'
+                           .format(r.status_code, r.std_out, r.std_err))
+
+
+def build_from_name(conn, args):
+    if len(args) < 1:
+        return help()
+
+    repository = args[0]
+    repository_url = 'git+ssh://github.com/{}.git'.format(repository)
+    return build_from_url(conn, [repository_url])
+
+
+def build_from_url(conn, args):
+    if len(args) < 1:
+        return help()
+
+    logger = logging.getLogger(__name__)
+
     # regex from Kel Solaar, http://stackoverflow.com/a/22312124
-    m = re.match('(((git|ssh|git\+ssh|http(s)?)|(git@[\w\.]+))(:(//)?)([\w\.@\:/\-~]+)(\.git)(/)?)', args)
+    url = args[0]
+    m = re.match('((git(\+ssh)?|ssh|http(s)?)|(git@[\w\.]+))(:(//)?)([\w\.@\:/\-~]+)(\.git)(/)?', url)
     if not m:
         return help()
 
-    repository_url = m.group(1)
+    repository_url = m.group(0)
     build_dir = tempfile.mkdtemp()
 
-    print 'cloning {}'.format(repository_url)
-    r = envoy.run('git clone {} {}'.format(repository_url, build_dir))
-    if r.status_code > 0:
-        response = 'clone error {}: {}\n{}'.format(r.status_code, r.std_out, r.std_err)
+    response = None
+
+    try:
+        logger.info('Cloning {} to {}'.format(repository_url, build_dir))
+        clone_repository(repository_url, build_dir)
+
+        logger.info('Building image')
+        build_output = [line for line in conn.build(path=build_dir, rm=True)]
+
+        # envoy-based runner in case of trouble with docker-py
+        #r = envoy.run('docker build {}'.format(build_dir))
+        #build_output = [line for line in r.std_out.split('\n') if line]
+
+        # check the build output for success
+        m = re.search('Successfully built ([0-9a-f]+)', build_output[-1])
+        if not m:
+            raise RuntimeError('Error building image: {}'.format(build_output[-1]))
+
+        image = m.group(1)
+        response = 'Successfully built {}'.format(image)
+        logger.info(response)
         return response
 
-    print 'building image'
-    build_output = [line for line in conn.build(path=build_dir, rm=True)]
-
-    # check the last line of the build output for success
-    m = re.search('Successfully built ([0-9a-f]+)', build_output[-1])
-    if not m:
-        response = 'build error: {}'.format(build_output[-1])
+    except RuntimeError as error:
+        response = str(error)
+        logger.error(response)
         return response
-    image = m.group(1)
 
-    response = 'successfully built {}'.format(image)
-    return response
+    finally:
+        if os.path.exists(build_dir):
+            logger.info('Removing build directory {}'.format(build_dir))
+            shutil.rmtree(build_dir)
+
 
 def run(conn, args):
-    m = re.match('([0-9a-f]+)', args)
-    if not m:
+    if len(args) < 1:
         return help()
 
-    image = m.group(1)
+    logger = logging.getLogger(__name__)
 
-    print 'creating container'
+    image = args[0]
+    logger.info('Creating container from image {}'.format(image))
+
     container = conn.create_container(image=image)
     if not container:
-        response = 'error creating container'
+        response = 'Error creating container'
+        logger.error(response)
         return response
 
-    print 'starting container'
-    response = conn.start(container=container.get('Id'))
+    container_id = container.get('Id')
+    short_id = container_id[0:10]
 
-    print 'waiting for container to exit'
-    exit_code = conn.wait(container=container.get('Id'))
+    logger.info('Starting container {}'.format(short_id))
+    conn.start(container=container_id)
+
+    logger.info('Waiting for container {} to exit'.format(short_id))
+    exit_code = conn.wait(container=container_id)
 
     if exit_code > 0:
-        response = 'container process returned non-zero exit code {}'.format(exit_code)
+        response = 'Container {} returned a non-zero exit code {}'.format(short_id, exit_code)
+        logger.error(response)
         return response
 
-    response = 'success'
+    response = 'Container {} exited successfully'.format(short_id)
+    logger.info(response)
     return response
 
 
 def docker_builder(user, action, args):
-    from docker import Client
-    conn = Client()
+    from docker.client import Client
+    from docker.utils import kwargs_from_env
+
+    logger = logging.getLogger(__name__)
+    logger.debug('ACTION {} {} {}'.format(user, action, args))
+
+    logger.info('Connecting to Docker host')
+    conn = Client(**kwargs_from_env(assert_hostname=False))
+
+    args = args.split()
 
     if action == 'help':
         return help()
     elif action == 'build':
-        return build(conn, args)
+        return build_from_name(conn, args)
+    elif action == 'build_url':
+        return build_from_url(conn, args)
     elif action == 'run':
         return run(conn, args)
 
@@ -88,22 +146,36 @@ def docker_builder(user, action, args):
 #                                    {'title': 'Assignee', 'value': assignee, 'short': True},
 #                                    {'title': 'Status', 'value': status, 'short': True}, ]}
 
+def on_push_message(msg, server):
+    logger = logging.getLogger(__name__)
+
+    pusher_name = msg.get('pusher').get('name')
+    repository_url = msg.get('repository').get('git_url')
+
+    logger.info('Received push message: {} pushed to {}'.format(pusher_name, repository_url))
+    return docker_builder(pusher_name, 'build_url', repository_url)
+
+
 def on_message(msg, server):
+    if msg.get('pusher'):
+        return on_push_message(msg, server)
+
     text = msg.get("text", "")
     user = msg.get("user_name", "")
     args = None
-    m = re.match(r"!docker (help|build|run) ?(.*)", text)
+
+    m = re.match(r"!docker (help|build|build_url|run) ?(.*)", text)
     if not m:
         return
 
     action = m.group(1)
     args = m.group(2)
+
     return docker_builder(user, action, args)
 
 
 if __name__ == '__main__':
     print "Running from cmd line"
     print docker_builder('cli', 'help', '')
-    print docker_builder('cli', 'build', 'git+ssh://github.com/bcclaywell/pplacer-builder.git')
-    print docker_builder('cli', 'run', 'fa20e0548551')
-
+    print docker_builder('cli', 'build', 'bcclaywell/docker-simple')
+    #print docker_builder('cli', 'run', 'a265cc6e286a')
