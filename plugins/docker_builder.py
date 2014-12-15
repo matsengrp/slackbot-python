@@ -88,7 +88,7 @@ class DockerBuilder(threading.Thread):
             self.logger.info('Pulling from {} into {}'.format(repository_url, build_dir))
             update_repository(build_dir)
         else:
-            build_dir = tempfile.mkdtemp()
+            build_dir = tempfile.mkdtemp(dir=config.get('builder_dir', None))
             self.logger.info('Cloning {} to {}'.format(repository_url, build_dir))
             clone_repository(repository_url, build_dir)
             self.build_dirs[repository_url] = build_dir
