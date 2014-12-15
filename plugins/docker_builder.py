@@ -53,7 +53,7 @@ class DockerBuilder(threading.Thread):
             # block until a task is available
             task = self.queue.get(True)
 
-            self.logger.info('Processing task'.format(task))
+            self.logger.info('Processing task')
 
             user = task['user']
             action = task['action']
