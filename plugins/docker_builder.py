@@ -32,12 +32,16 @@ class DockerBuilder(threading.Thread):
         self.logger = logging.getLogger('DockerBuilder')
 
         self.queue = DockerBuilder.queue
+        self.build_dirs = {}
 
         from docker.client import Client
         from docker.utils import kwargs_from_env
 
         self.logger.info('Connecting to Docker host')
         self.client = Client(**kwargs_from_env(assert_hostname=False))
+
+        import atexit
+        atexit.register(self.cleanup_build_dirs)
 
 
     def run(self):
@@ -76,6 +80,29 @@ class DockerBuilder(threading.Thread):
         self.cancelled = True
 
 
+    def prepare_build_dir(self, repository_url):
+        build_dir = None
+
+        if repository_url in self.build_dirs:
+            build_dir = self.build_dirs.get(repository_url)
+            self.logger.info('Pulling from {} into {}'.format(repository_url, build_dir))
+            update_repository(build_dir)
+        else:
+            build_dir = tempfile.mkdtemp()
+            self.logger.info('Cloning {} to {}'.format(repository_url, build_dir))
+            clone_repository(repository_url, build_dir)
+            self.build_dirs[repository_url] = build_dir
+
+        return build_dir
+
+
+    def cleanup_build_dirs(self):
+        for build_dir in self.build_dirs.values():
+            if os.path.exists(build_dir):
+                self.logger.info('Removing build directory {}'.format(build_dir))
+                shutil.rmtree(build_dir)
+
+
     def build_image_github(self, args):
         if len(args) < 1:
             return usage()
@@ -95,13 +122,10 @@ class DockerBuilder(threading.Thread):
             return usage()
 
         repository_url = m.group(0)
-        build_dir = tempfile.mkdtemp()
-
         response = None
 
         try:
-            self.logger.info('Cloning {} to {}'.format(repository_url, build_dir))
-            clone_repository(repository_url, build_dir)
+            build_dir = self.prepare_build_dir(repository_url)
 
             self.logger.info('Building image')
             build_output = [line for line in self.client.build(path=build_dir, rm=True)]
@@ -124,11 +148,6 @@ class DockerBuilder(threading.Thread):
             response = str(error)
             self.logger.error(response)
             return response
-
-        finally:
-            if os.path.exists(build_dir):
-                self.logger.info('Removing build directory {}'.format(build_dir))
-                shutil.rmtree(build_dir)
 
 
     def run_image(self, args):
@@ -172,6 +191,13 @@ def usage():
 
 def clone_repository(repository_url, build_dir):
     r = envoy.run('git clone {} {}'.format(repository_url, build_dir))
+    if r.status_code is not 0:
+        raise RuntimeError('git returned a non-zero status code ({}):\n{}\n{}'
+                           .format(r.status_code, r.std_out, r.std_err))
+
+
+def update_repository(build_dir):
+    r = envoy.run('cd {} && git pull origin master'.format(build_dir))
     if r.status_code is not 0:
         raise RuntimeError('git returned a non-zero status code ({}):\n{}\n{}'
                            .format(r.status_code, r.std_out, r.std_err))
