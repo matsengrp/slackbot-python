@@ -29,7 +29,7 @@ class DockerBuilder(threading.Thread):
         self.cancelled = False
 
         logging.basicConfig(level=logging.DEBUG)
-        self.logger = logging.getLogger('DockerBuilder')
+        self.logger = logging.getLogger(__name__)
 
         self.queue = DockerBuilder.queue
         self.build_dirs = {}
@@ -70,9 +70,7 @@ class DockerBuilder(threading.Thread):
             else:
                 response = 'Unknown action {}'.format(action)
 
-            self.logger.info(response)
             send_msg(response)
-
             self.queue.task_done()
 
 
@@ -270,9 +268,7 @@ def on_message(msg, server):
         return usage()
     else:
         DockerBuilder.queue.put(task)
-        response = 'Task queued'
-        logger.info(response)
-        return response
+        logger.info('Queuing task')
 
 
 if __name__ == '__main__':
