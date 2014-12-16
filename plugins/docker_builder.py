@@ -70,7 +70,11 @@ class DockerBuilder(threading.Thread):
             else:
                 response = 'Unknown action {}'.format(action)
 
-            send_msg(response)
+            try:
+                send_msg(response)
+            except Exception as error:
+                self.logger.error('An unhandled exception occurred: ' + str(error))
+
             self.queue.task_done()
 
 
