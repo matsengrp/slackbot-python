@@ -2,8 +2,7 @@
 
 Available commands:
    help                            show this help
-   build <github repository>       build an image from github
-   build_url <repository url>      build an image from a git repository
+   build <github repository>       build an image from a github repository
    run <image id>                  create and run a container
 """
 
@@ -63,8 +62,6 @@ class DockerBuilder(threading.Thread):
 
             if action == 'build':
                 response = self.build_image_github(args)
-            elif action == 'build_url':
-                response = self.build_image_url(args)
             elif action == 'run':
                 response = self.run_image(args)
             else:
@@ -111,7 +108,10 @@ class DockerBuilder(threading.Thread):
 
         repository = args[0]
         repository_url = 'git+ssh://github.com/{}.git'.format(repository)
-        return self.build_image_url([repository_url])
+
+        response = self.build_image_url([repository_url])
+        response = '[{}] {}'.format(repository, response)
+        return response
 
 
     def build_image_url(self, args):
@@ -244,18 +244,18 @@ def on_message(msg, server):
     if msg.get('repository') and msg.get('pusher'):
         # push notification
         user = msg.get('pusher').get('name')
-        repository_url = msg.get('repository').get('git_url')
+        repository_name = msg.get('repository').get('full_name')
 
         task = { 'user': user,
-                 'action': 'build_url',
-                 'args': [repository_url] }
+                 'action': 'build',
+                 'args': [repository_name] }
     else:
         # channel message
         text = msg.get("text", "")
         user = msg.get("user_name", "")
         args = None
 
-        m = re.match(r"!docker (help|build|build_url|run) ?(.*)", text)
+        m = re.match(r"!docker (help|build|run) ?(.*)", text)
         if not m:
             return
 
@@ -282,7 +282,7 @@ if __name__ == '__main__':
     #worker.start()
 
     push_msg = { 'pusher': { 'name': 'bcclaywell' },
-                       'repository': { 'git_url': 'git+ssh://github.com/bcclaywell/docker-simple.git' } }
+                       'repository': { 'full_name': 'bcclaywell/docker-simple' } }
 
     command_msg = { 'user_name': 'bcclaywell',
                        'text': '!docker build bcclaywell/docker-simple' }
