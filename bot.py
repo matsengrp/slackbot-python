@@ -5,6 +5,7 @@
 
 import sys
 import os
+import logging
 import re
 import time
 import json
@@ -15,6 +16,8 @@ import boto.sqs
 from boto.sqs.message import RawMessage
 from glob import glob
 from daemon import runner
+
+logging.basicConfig(level=logging.INFO)
 
 curdir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(curdir)
