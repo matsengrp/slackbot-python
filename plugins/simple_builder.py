@@ -17,6 +17,7 @@ def on_push(msg):
 
     user = msg.get('pusher').get('name')
 
+    ref = msg.get('ref')
     commit_id = msg.get('head_commit').get('id')
     short_commit_id = commit_id[0:7]
 
@@ -29,8 +30,15 @@ def on_push(msg):
         logger.error(response)
         return response
 
+    logger.info('Running `git checkout` in {}'.format(build_dir))
+    r = envoy.run('git checkout {}'.format(ref), cwd=build_dir)
+    if r.status_code is not 0:
+        response = '[{}] `git checkout` returned a non-zero error code ({})'.format(repository_name, r.status_code)
+        logger.error(response)
+        return response
+
     logger.info('Running `git pull` in {}'.format(build_dir))
-    r = envoy.run('git pull origin master', cwd=build_dir)
+    r = envoy.run('git pull origin {}'.format(ref), cwd=build_dir)
     if r.status_code is not 0:
         response = '[{}] `git pull` returned a non-zero error code ({})'.format(repository_name, r.status_code)
         logger.error(response)
