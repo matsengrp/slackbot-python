@@ -13,7 +13,10 @@ logger.setLevel(logging.INFO)
 def on_push(msg):
     repository_name = msg.get('repository').get('full_name')
     if repository_name not in config.get('builder_repos'):
-        return
+        return None
+
+    if msg.get('head_commit') is None:
+        return None
 
     user = msg.get('pusher').get('name')
 
@@ -95,6 +98,9 @@ def on_message(msg, server):
         channel = repository_config.get('channel')
 
         response = on_push(msg)
+        if response is None:
+            return
+
         logger.info('SEND {} {}'.format(channel, response))
         send_msg(channel, response)
     else:
