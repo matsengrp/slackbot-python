@@ -20,7 +20,10 @@ def on_push(msg):
     commit_id = msg.get('head_commit').get('id')
     short_commit_id = commit_id[0:7]
 
-    build_dir = config.get('builder_repos').get(repository_name)
+    repository_config = config.get('builder_repos').get(repository_name)
+    build_dir = repository_config.get('build_dir')
+    channel = repository_config.get('channel')
+
     if not os.path.exists(build_dir):
         response = "[{}] Build directory '{}' not found".format(repository_name, build_dir)
         logger.error(response)
@@ -29,7 +32,7 @@ def on_push(msg):
     logger.info('Running `git pull` in {}'.format(build_dir))
     r = envoy.run('git pull origin master', cwd=build_dir)
     if r.status_code is not 0:
-        response = '[{} ({})] `git pull` returned a non-zero error code ({})'.format(repository_name, short_commit_id, r.status_code)
+        response = '[{}] `git pull` returned a non-zero error code ({})'.format(repository_name, r.status_code)
         logger.error(response)
         return response
 
@@ -50,10 +53,10 @@ def on_push(msg):
         return response
 
     build_output = [line for line in r.std_out.split('\n') if line]
-    logger.debug(build_output)
 
     m = re.match('Successfully built ([0-9a-f]+)', build_output[-1])
     if not m:
+        logger.debug(build_output)
         response = '`docker build` success message not found in build output'
         logger.error(response)
         return response
@@ -61,7 +64,14 @@ def on_push(msg):
     image_id = m.group(1)
     short_image_id = image_id[0:10]
 
-    response = '[{} ({})] `docker build` successfully built image {}'.format(repository_name, short_commit_id, short_image_id)
+    logger.info('Running image')
+    r = envoy.run('docker run -t --rm {}'.format(image_id))
+    if r.status_code is not 0:
+        response = '[{} ({})] `docker run` on image {} returned a non-zero error code ({})'.format(repository_name, short_commit_id, short_image_id, r.status_code)
+        logger.error(response)
+        return response
+
+    response = '[{} ({})] `docker build` and `docker run` successful'.format(repository_name, short_commit_id)
     logger.info(response)
     return response
 
@@ -70,7 +80,13 @@ def on_message(msg, server):
     logger.debug(msg)
 
     if msg.get('repository') and msg.get('pusher'):
-        channel = config.get('builder_channel')
+        repository_name = msg.get('repository').get('full_name')
+        if repository_name not in config.get('builder_repos'):
+            return
+
+        repository_config = config.get('builder_repos').get(repository_name)
+        channel = repository_config.get('channel')
+
         response = on_push(msg)
         logger.info('SEND {} {}'.format(channel, response))
         send_msg(channel, response)
