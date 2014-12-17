@@ -8,6 +8,10 @@ config = {
     "domain": '<yourdomain.slack.com>',
     "queue": '<sqs queue name>',
 
+    # simple_builder plugin
+    "builder_channel": "#builder",
+    "builder_repos": {"<github repo name>": "<path to local working copy>"},
+
     # stackdriver plugin
     "stackdriver_username": 'stackdriver',
     "stackdriver_channel": '#monitoring',
