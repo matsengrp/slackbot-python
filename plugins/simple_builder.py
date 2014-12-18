@@ -21,6 +21,9 @@ def on_push(msg):
     build_dir = repository_config.get('build_dir')
     channel = repository_config.get('channel')
 
+    # mask out all world permissions
+    os.umask(0o007)
+
     if not os.path.exists(build_dir):
         logger.info('Cloning repository to {}'.format(build_dir))
         hostname = config.get('builder_hostname', 'github.com')
