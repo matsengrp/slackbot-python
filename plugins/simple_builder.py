@@ -12,14 +12,7 @@ logger.setLevel(logging.INFO)
 
 def on_push(msg):
     repository_name = msg.get('repository').get('full_name')
-    if repository_name not in config.get('builder_repos'):
-        return None
-
-    if msg.get('head_commit') is None:
-        return None
-
     user = msg.get('pusher').get('name')
-
     commit_id = msg.get('head_commit').get('id')
     short_commit_id = commit_id[0:7]
 
@@ -94,12 +87,16 @@ def on_message(msg, server):
         if repository_name not in config.get('builder_repos'):
             return
 
+        if msg.get('head_commit') is None:
+            return
+
         repository_config = config.get('builder_repos').get(repository_name)
         channel = repository_config.get('channel')
+        short_commit_id = msg.get('head_commit').get('id')[0:7]
+
+        send_msg(channel, '[{} ({})] Starting build'.format(repository_name, short_commit_id))
 
         response = on_push(msg)
-        if response is None:
-            return
 
         logger.info('SEND {} {}'.format(channel, response))
         send_msg(channel, response)
