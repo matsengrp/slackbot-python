@@ -21,9 +21,14 @@ def on_push(msg):
     channel = repository_config.get('channel')
 
     if not os.path.exists(build_dir):
-        response = "[{}] Build directory '{}' not found".format(repository_name, build_dir)
-        logger.error(response)
-        return response
+        logger.info('Cloning repository to {}'.format(build_dir))
+        hostname = config.get('builder_hostname', 'github.com')
+        r = envoy.run('git clone git+ssh://{}/{} {}'.format(hostname, repository_name, build_dir))
+        if r.status_code is not 0:
+            response = "[{}] `git clone` to `{}` failed".format(repository_name, build_dir)
+            logger.error(response)
+            logger.debug('stdout:\n%s\nstderr:\n%s\n', r.std_out, r.std_err)
+            return response
 
     logger.info('Running `git fetch` in {}'.format(build_dir))
     r = envoy.run('git fetch origin', cwd=build_dir)
