@@ -44,7 +44,7 @@ def on_push(msg):
     logger.info('Verifying head commit')
     r = envoy.run('git rev-parse HEAD', cwd=build_dir)
     if r.std_out.strip() != commit_id:
-        response = '[{} ({})] `git pull` did not fetch the head commit'.format(repository_name, short_commit_id)
+        response = '[{} ({})] `git checkout` failed to check out the correct commit'.format(repository_name, short_commit_id)
         logger.error(response)
         logger.debug('stdout:\n%s\nstderr:\n%s\n', r.std_out, r.std_err)
         return response
