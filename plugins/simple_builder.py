@@ -2,7 +2,6 @@ import logging
 import os
 import re
 import envoy
-from config import config
 from bot import send_msg
 
 
@@ -11,6 +10,8 @@ logger.setLevel(logging.INFO)
 
 
 def on_push(msg):
+    from config import config
+
     repository_name = msg.get('repository').get('full_name')
     user = msg.get('pusher').get('name')
     commit_id = msg.get('head_commit').get('id')
@@ -95,6 +96,12 @@ def on_message(msg, server):
 
     if msg.get('repository') and msg.get('pusher'):
         repository_name = msg.get('repository').get('full_name')
+
+        logger.info('Reloading configuration')
+        import config
+        reload(config)
+        from config import config
+
         if repository_name not in config.get('builder_repos'):
             return
 
