@@ -30,6 +30,7 @@ def on_push(msg):
     if r.status_code is not 0:
         response = '[{}] `git fetch` returned a non-zero error code ({})'.format(repository_name, r.status_code)
         logger.error(response)
+        logger.debug('stdout:\n%s\nstderr:\n%s\n', r.std_out, r.std_err)
         return response
 
     logger.info('Running `git checkout` in {}'.format(build_dir))
@@ -37,6 +38,7 @@ def on_push(msg):
     if r.status_code is not 0:
         response = '[{}] `git checkout` returned a non-zero error code ({})'.format(repository_name, r.status_code)
         logger.error(response)
+        logger.debug('stdout:\n%s\nstderr:\n%s\n', r.std_out, r.std_err)
         return response
 
     logger.info('Verifying head commit')
@@ -44,24 +46,27 @@ def on_push(msg):
     if r.std_out.strip() != commit_id:
         response = '[{} ({})] `git pull` did not fetch the head commit'.format(repository_name, short_commit_id)
         logger.error(response)
+        logger.debug('stdout:\n%s\nstderr:\n%s\n', r.std_out, r.std_err)
         return response
 
     logger.info('Building image in {}'.format(build_dir))
     r = envoy.run('docker build {}'.format(build_dir))
     if r.status_code is not 0:
         build_stderr = [line for line in r.std_err.split('\n') if line]
-        logger.debug(build_stderr)
         response = '[{} ({})] `docker build` failed: {}'.format(repository_name, short_commit_id, build_stderr[-1])
         logger.error(response)
+        logger.debug('stdout:\n%s\nstderr:\n%s\n', r.std_out, r.std_err)
+        logger.debug(build_stderr)
         return response
 
     build_output = [line for line in r.std_out.split('\n') if line]
 
     m = re.match('Successfully built ([0-9a-f]+)', build_output[-1])
     if not m:
-        logger.debug(build_output)
         response = '`docker build` success message not found in build output'
         logger.error(response)
+        logger.debug('stdout:\n%s\nstderr:\n%s\n', r.std_out, r.std_err)
+        logger.debug(build_output)
         return response
 
     image_id = m.group(1)
@@ -72,6 +77,7 @@ def on_push(msg):
     if r.status_code is not 0:
         response = '[{} ({})] `docker run` on image {} returned a non-zero error code ({})'.format(repository_name, short_commit_id, short_image_id, r.status_code)
         logger.error(response)
+        logger.debug('stdout:\n%s\nstderr:\n%s\n', r.std_out, r.std_err)
         return response
 
     response = '[{} ({})] `docker build` and `docker run` successful'.format(repository_name, short_commit_id)
