@@ -4,3 +4,4 @@ importlib==1.0.3
 python-daemon==1.6
 beautifulsoup4==4.3.2
 jira==0.25
+envoy==0.0.3
