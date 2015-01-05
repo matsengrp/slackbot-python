@@ -105,10 +105,10 @@ def on_push(msg):
         logger.debug('stdout:\n%s\nstderr:\n%s\n', r.std_out, r.std_err)
         return response
 
-    logger.info('`docker run` was successful, removing container %s', container_id)
+    logger.info('`docker run` was successful, removing container %s', short_container_id)
     r = envoy.run('docker rm {}'.format(container_id))
     if r.status_code is not 0:
-        logger.warning('Error removing container %s', container_id)
+        logger.warning('Error removing container %s', short_container_id)
         logger.debug('stdout:\n%s\nstderr:\n%s\n', r.std_out, r.std_err)
 
     response = '[{} ({})] `docker build` and `docker run` successful'.format(repository_name, short_commit_id)
