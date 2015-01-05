@@ -9,6 +9,13 @@ from bot import send_msg
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+# amount of time to wait for `docker run` to complete
+DOCKER_RUN_TIMEOUT = 1800
+
+# amount of time to wait for `docker run` to respond to SIGTERM before
+# killing the process
+DOCKER_RUN_KILL_TIMEOUT = 30
+
 
 def on_push(msg):
     from config import config
@@ -85,7 +92,7 @@ def on_push(msg):
     logger.info('Running image %s', image_id)
 
     cidfile = tempfile.mktemp()
-    r = envoy.run('docker run -t --cidfile="{}" {}'.format(cidfile, image_id))
+    r = envoy.run('docker run -t --cidfile="{}" {}'.format(cidfile, image_id), timeout=DOCKER_RUN_TIMEOUT, kill_timeout=DOCKER_RUN_KILL_TIMEOUT)
     with open(cidfile) as cidfile_fd:
         container_id = cidfile_fd.read()
     os.unlink(cidfile)
