@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import tempfile
 import envoy
 from bot import send_msg
 
@@ -81,13 +82,27 @@ def on_push(msg):
     image_id = m.group(1)
     short_image_id = image_id[0:10]
 
-    logger.info('Running image')
-    r = envoy.run('docker run -t --rm {}'.format(image_id))
+    logger.info('Running image %s', image_id)
+
+    cidfile = tempfile.mktemp()
+    r = envoy.run('docker run -t --cidfile="{}" {}'.format(cidfile, image_id))
+    with open(cidfile) as cidfile_fd:
+        container_id = cidfile_fd.read()
+    os.unlink(cidfile)
+
+    short_container_id = container_id[0:10]
+
     if r.status_code is not 0:
-        response = '[{} ({})] `docker run` on image {} returned a non-zero error code ({})'.format(repository_name, short_commit_id, short_image_id, r.status_code)
+        response = '[{} ({})] `docker run` on image {} (in container {}) returned a non-zero error code ({})'.format(repository_name, short_commit_id, short_image_id, short_container_id, r.status_code)
         logger.error(response)
         logger.debug('stdout:\n%s\nstderr:\n%s\n', r.std_out, r.std_err)
         return response
+
+    logger.info('`docker run` was successful, removing container %s', container_id)
+    r = envoy.run('docker rm {}'.format(container_id))
+    if r.status_code is not 0:
+        logger.warning('Error removing container %s', container_id)
+        logger.debug('stdout:\n%s\nstderr:\n%s\n', r.std_out, r.std_err)
 
     response = '[{} ({})] `docker build` and `docker run` successful'.format(repository_name, short_commit_id)
     logger.info(response)
